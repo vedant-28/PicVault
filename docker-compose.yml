@@ -32,3 +32,15 @@ services:
       - 3001:3001
     shm_size: "1gb"
     restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio-server
+    ports:
+      - "9000:9000"     # S3 API Port
+      - "9001:9001"     # Web Console UI Port
+    environment:
+      MINIO_ROOT_USER: root
+      MINIO_ROOT_PASSWORD: passw0rd1234
+    command: server --console-address ":9001" /data
+    restart: always

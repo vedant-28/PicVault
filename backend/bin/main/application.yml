@@ -2,7 +2,7 @@ spring:
   application:
     name: picvault
   datasource:
-    url: jdbc:mysql://localhost:3306/picvault
+    url: jdbc:mysql://localhost:3306/picvault?createDatabaseIfNotExist=true
     username: root
     password: root
   jpa:
@@ -13,13 +13,14 @@ spring:
     multipart:
       max-file-size: 50MB
       max-request-size: 1GB
+      file-size-threshold: 1MB
 
 picvault:
   minio:
-    url: ${MINIO_URL:http://localhost:9000}
-    access-key: ${MINIO_ACCESS_KEY:picvault}
-    secret-key: ${MINIO_SECRET_KEY:picvault123}
-    bucket: ${MINIO_BUCKET:picvault-images}
+    url: http://localhost:9000
+    access-key: root
+    secret-key: passw0rd1234
+    bucket: picvault-images
   upload:
     max-files-per-request: 20
     max-file-size-mb: 50

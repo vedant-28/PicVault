@@ -10,6 +10,5 @@ import java.util.UUID;
 
 @Repository
 public interface ImageMetadataRepository extends JpaRepository<ImageMetadata, UUID> {
-
     Page<ImageMetadata> findAllByOrderByUploadedAtDesc(Pageable pageable);
 }
