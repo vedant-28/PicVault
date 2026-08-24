@@ -3,6 +3,8 @@ package com.vedant.picvault.service;
 import java.io.InputStream;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -14,9 +16,17 @@ import org.springframework.web.multipart.MultipartFile;
 import com.vedant.picvault.entity.ImageMetadata;
 import com.vedant.picvault.repository.ImageMetadataRepository;
 
+import io.minio.BucketExistsArgs;
+import io.minio.ListObjectsArgs;
+import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.RemoveBucketArgs;
 import io.minio.RemoveObjectArgs;
+import io.minio.Result;
+import io.minio.errors.ErrorResponseException;
+import io.minio.errors.MinioException;
+import io.minio.messages.Item;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 
@@ -39,6 +49,12 @@ public class ImageService {
 
     @Transactional
     public List<ImageMetadata> uploadImage(MultipartFile[] files) {
+
+        long totalArraySizeBytes = Arrays.stream(files).mapToLong(MultipartFile::getSize).sum();
+        long maxAllowedMegaBytes = 50 * 1024 * 1024; // Total array size 
+        if(files.length > 20 || totalArraySizeBytes > maxAllowedMegaBytes) {
+            throw new IllegalArgumentException("File upload limit reached. Please upload 20 or less files of total size 50MB");
+        }
         
         List<ImageMetadata> savedImageMetadatas = new ArrayList<>();
 
@@ -100,12 +116,66 @@ public class ImageService {
         }
     }
 
+    @Transactional
+    public void deleteAllImage() throws Exception {
+        boolean isMetadataEmpty = imageMetadataRepository.count() == 0;
+        System.out.println("isMetadataEmpty>>>" + isMetadataEmpty);
+        boolean isMinioBucketEmpty = isMinioBucketExistsAndNotEmpty(bucketName);
+        System.out.println("isMinioBucketEmpty>>>" + isMinioBucketEmpty);
+        if (!isMetadataEmpty && !isMinioBucketEmpty) {
+            imageMetadataRepository.deleteAll();
+            try {
+                deleteAllMinioItemsInSingleBucket(bucketName);
+            } catch (Exception e) {
+                throw new Exception("Something went wrong while deleting image files. Please try again.");
+            }
+        }
+        else {
+            System.out.println("Something went wrong.");
+        }
+    }
+
+    // --------------------------------------Helper methods-----------------------------------------
+    // Custom reuable validation for incoming file
     private void validateImage(MultipartFile file) {
         if(file.isEmpty()) throw new IllegalArgumentException("Empty file uploaded.");
 
         String contentType = file.getContentType();
         if(contentType == null || !ALLOWED_IMAGE_TYPES.contains(contentType.toLowerCase())) {
             throw new IllegalArgumentException("Unsupported file type; only image files are allowed.");
+        }
+    }
+
+    // Custom reusable validation for Minio bucket (Existance & non-empty)
+    private boolean isMinioBucketExistsAndNotEmpty(String bucketName) throws MinioException {
+        try {
+            minioClient.removeBucket(RemoveBucketArgs.builder().bucket(bucketName).build());
+            minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucketName).build());
+            return false;
+
+        } catch (ErrorResponseException e) {
+            String errorCode = e.errorResponse().code();
+            if ("BucketNotEmpty".equals(errorCode)) { // "BucketNotEmpty" means bucket exists and has items
+                return false;
+            }
+            if ("NoSuchBucket".equals(errorCode)) { // "NoSuchBucket" means the bucket does not exist
+                return true;
+            }
+            throw new RuntimeException("MinIO error occurred: " + errorCode, e);
+        } catch (Exception e) {
+            throw new RuntimeException("Unexpected MinIO connection failure", e);
+        }
+    }
+
+    private void deleteAllMinioItemsInSingleBucket(String bucketName) throws Exception {
+        Iterable<Result<Item>> resultSet = minioClient.listObjects(
+            ListObjectsArgs.builder().bucket(bucketName).recursive(true).build()
+        );
+        for(Result<Item> result : resultSet) {
+            String objectName = result.get().objectName();
+            minioClient.removeObject(
+                RemoveObjectArgs.builder().bucket(bucketName).object(objectName).build()
+            );
         }
     }
 }

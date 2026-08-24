@@ -48,4 +48,10 @@ public class ImageController {
         return ResponseEntity.status(HttpStatus.NO_CONTENT).body("Image deleted successfully.");
     }
 
+    @DeleteMapping("/images")
+    public ResponseEntity<String> deleteAllImage() throws Exception {
+        imageService.deleteAllImage();
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).body("All images deleted successfully.");
+    }
+
 }
