@@ -119,19 +119,17 @@ public class ImageService {
     @Transactional
     public void deleteAllImage() throws Exception {
         boolean isMetadataEmpty = imageMetadataRepository.count() == 0;
-        System.out.println("isMetadataEmpty>>>" + isMetadataEmpty);
-        boolean isMinioBucketEmpty = isMinioBucketExistsAndNotEmpty(bucketName);
-        System.out.println("isMinioBucketEmpty>>>" + isMinioBucketEmpty);
+        boolean isMinioBucketEmpty = isMinioBucketEmpty(bucketName);
         if (!isMetadataEmpty && !isMinioBucketEmpty) {
             imageMetadataRepository.deleteAll();
             try {
                 deleteAllMinioItemsInSingleBucket(bucketName);
             } catch (Exception e) {
-                throw new Exception("Something went wrong while deleting image files. Please try again.");
+                throw new Exception("Something went wrong while deleting image files from minio. Please try again.");
             }
         }
         else {
-            System.out.println("Something went wrong.");
+            throw new Exception("Something went wrong while deleting image files. Please try again.");
         }
     }
 
@@ -146,8 +144,8 @@ public class ImageService {
         }
     }
 
-    // Custom reusable validation for Minio bucket (Existance & non-empty)
-    private boolean isMinioBucketExistsAndNotEmpty(String bucketName) throws MinioException {
+    // Custom reusable validation for Minio bucket (non-empty)
+    private boolean isMinioBucketEmpty(String bucketName) throws MinioException {
         try {
             minioClient.removeBucket(RemoveBucketArgs.builder().bucket(bucketName).build());
             minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucketName).build());
