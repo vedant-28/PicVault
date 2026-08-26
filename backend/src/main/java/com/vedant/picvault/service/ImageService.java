@@ -1,6 +1,7 @@
 package com.vedant.picvault.service;
 
 import java.io.InputStream;
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -8,15 +9,25 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
+import com.vedant.picvault.dto.ImageDto;
+import com.vedant.picvault.dto.ImageResourceDto;
 import com.vedant.picvault.entity.ImageMetadata;
 import com.vedant.picvault.repository.ImageMetadataRepository;
 
 import io.minio.BucketExistsArgs;
+import io.minio.GetObjectArgs;
+import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.ListObjectsArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
@@ -24,6 +35,9 @@ import io.minio.PutObjectArgs;
 import io.minio.RemoveBucketArgs;
 import io.minio.RemoveObjectArgs;
 import io.minio.Result;
+import io.minio.StatObjectArgs;
+import io.minio.StatObjectResponse;
+import io.minio.Http.Method;
 import io.minio.errors.ErrorResponseException;
 import io.minio.errors.MinioException;
 import io.minio.messages.Item;
@@ -35,6 +49,7 @@ import lombok.RequiredArgsConstructor;
 public class ImageService {
     private final MinioClient minioClient;
     private final ImageMetadataRepository imageMetadataRepository;
+    private static final Pattern UNSAFE_CHARS = Pattern.compile("[^a-zA-Z0-9._-]");
 
     @Value("${picvault.minio.bucket}")
     private String bucketName;
@@ -64,7 +79,7 @@ public class ImageService {
 
             // Unique storage key generatrion
             //String contentType = file.getContentType();
-            String storageKey = UUID.randomUUID().toString();
+            String storageKey = UUID.randomUUID().toString() + "_" + sanitizeFileName(file.getOriginalFilename());
 
             // Save image by streaming in minio
             try(InputStream inputStream = file.getInputStream()) {
@@ -117,19 +132,35 @@ public class ImageService {
     }
 
     @Transactional
-    public void deleteAllImage() throws Exception {
-        boolean isMetadataEmpty = imageMetadataRepository.count() == 0;
-        boolean isMinioBucketEmpty = isMinioBucketEmpty(bucketName);
-        if (!isMetadataEmpty && !isMinioBucketEmpty) {
-            imageMetadataRepository.deleteAll();
-            try {
-                deleteAllMinioItemsInSingleBucket(bucketName);
-            } catch (Exception e) {
-                throw new Exception("Something went wrong while deleting image files from minio. Please try again.");
+    public void deleteAllImage() {
+        imageMetadataRepository.deleteAll();
+        deleteAllMinioItemsInSingleBucket(bucketName);
+    }
+
+    public Page<ImageDto> listAllImages(Pageable pageable) {
+        return imageMetadataRepository.findAllByOrderByUploadedAtDesc(pageable)
+                .map(metadata -> new ImageDto(
+                    metadata.getOriginalFilename(),
+                    buildImageUrl(metadata.getStorageKey()),
+                    metadata.getSizeBytes()
+                ));
+    }
+
+    public ImageResourceDto serveImageUrls(String filename) {
+        try {
+            // Fetching object metadata from minio to get etag (MD5 hash)
+            StatObjectResponse stat = minioClient.statObject(
+                StatObjectArgs.builder().bucket(bucketName).object(filename).build()
+            );
+            // Returning file contents in stream form, etag & contentType via DTO to controller;
+            // To serve image URLs with appropriate caching headers
+            try(InputStream stream = minioClient.getObject(
+                GetObjectArgs.builder().bucket(bucketName).object(filename).build())) {
+                byte[] media = stream.readAllBytes();
+                return new ImageResourceDto(media, stat.etag(), stat.contentType());
             }
-        }
-        else {
-            throw new Exception("Something went wrong while deleting image files. Please try again.");
+        } catch (Exception e) {
+            throw new RuntimeException(e.getMessage());
         }
     }
 
@@ -144,36 +175,33 @@ public class ImageService {
         }
     }
 
-    // Custom reusable validation for Minio bucket (non-empty)
-    private boolean isMinioBucketEmpty(String bucketName) throws MinioException {
+    private void deleteAllMinioItemsInSingleBucket(String bucketName) {
         try {
-            minioClient.removeBucket(RemoveBucketArgs.builder().bucket(bucketName).build());
-            minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucketName).build());
-            return false;
-
-        } catch (ErrorResponseException e) {
-            String errorCode = e.errorResponse().code();
-            if ("BucketNotEmpty".equals(errorCode)) { // "BucketNotEmpty" means bucket exists and has items
-                return false;
+            Iterable<Result<Item>> resultSet = minioClient.listObjects(
+                ListObjectsArgs.builder().bucket(bucketName).recursive(true).build()
+            );
+            for(Result<Item> result : resultSet) {
+                String objectName = result.get().objectName();
+                minioClient.removeObject(
+                    RemoveObjectArgs.builder().bucket(bucketName).object(objectName).build()
+                );
             }
-            if ("NoSuchBucket".equals(errorCode)) { // "NoSuchBucket" means the bucket does not exist
-                return true;
-            }
-            throw new RuntimeException("MinIO error occurred: " + errorCode, e);
         } catch (Exception e) {
-            throw new RuntimeException("Unexpected MinIO connection failure", e);
+            throw new RuntimeException("Failed to delete images from minio. " + e.getMessage());
         }
     }
 
-    private void deleteAllMinioItemsInSingleBucket(String bucketName) throws Exception {
-        Iterable<Result<Item>> resultSet = minioClient.listObjects(
-            ListObjectsArgs.builder().bucket(bucketName).recursive(true).build()
-        );
-        for(Result<Item> result : resultSet) {
-            String objectName = result.get().objectName();
-            minioClient.removeObject(
-                RemoveObjectArgs.builder().bucket(bucketName).object(objectName).build()
-            );
-        }
+    private String sanitizeFileName(String originalFileName) {
+        if (originalFileName == null || originalFileName.isBlank()) return "unnamed";
+        String name = Paths.get(originalFileName).getFileName().toString();
+        name = UNSAFE_CHARS.matcher(name).replaceAll("");
+        return name.length() > 100 ? name.substring(name.length() - 100) : name;
+    }
+
+    private String buildImageUrl(String storageKey) {
+        return ServletUriComponentsBuilder.fromCurrentContextPath()
+            .path("/picvault/images/{filename}")
+            .buildAndExpand(storageKey)
+            .toUriString();
     }
 }
