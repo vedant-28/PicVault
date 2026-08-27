@@ -41,12 +41,6 @@ public class ImageController {
 
     private final ImageService imageService;
 
-    @GetMapping("/test")
-    public ResponseEntity<String> testController() {
-        System.out.println("success");
-        return ResponseEntity.ok("success");
-    }
-
     @GetMapping("/images")
     public ResponseEntity<Page<ImageDto>> listAllImagesAndUrls(
         @PageableDefault(size = 20, sort = "uploadedAt", direction = Sort.Direction.DESC) Pageable pageable

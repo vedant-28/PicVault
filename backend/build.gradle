@@ -27,6 +27,7 @@ dependencies {
     runtimeOnly 'com.mysql:mysql-connector-j'
 
     implementation 'io.minio:minio:9.0.3'
+    implementation 'com.bucket4j:bucket4j_jdk17-core:8.19.0' 
 
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
