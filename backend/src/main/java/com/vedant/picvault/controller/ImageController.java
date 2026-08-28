@@ -68,7 +68,7 @@ public class ImageController {
     }
 
     @PostMapping(value = "/images", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<List<ImageMetadata>> imageFileUpload(@RequestParam("file") MultipartFile[] files) {
+    public ResponseEntity<List<ImageMetadata>> imageFileUpload(@RequestParam("files") MultipartFile[] files) {
         if(files == null || files.length == 0) return ResponseEntity.badRequest().build();
 
         List<ImageMetadata> imageMetadataList = imageService.uploadImage(files);

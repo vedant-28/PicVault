@@ -140,6 +140,7 @@ public class ImageService {
     public Page<ImageDto> listAllImages(Pageable pageable) {
         return imageMetadataRepository.findAllByOrderByUploadedAtDesc(pageable)
                 .map(metadata -> new ImageDto(
+                    metadata.getId(),
                     metadata.getOriginalFilename(),
                     buildImageUrl(metadata.getStorageKey()),
                     metadata.getSizeBytes()
