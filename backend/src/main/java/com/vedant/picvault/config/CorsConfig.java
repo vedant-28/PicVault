@@ -15,11 +15,13 @@ public class CorsConfig {
     @Bean
     public WebMvcConfigurer corsConfigurer() {
         return new WebMvcConfigurer() {
-            public void addCorsMapping(CorsRegistry registry) {
+            @Override
+            public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/picvault/**")
                 .allowedOrigins(allowedOrigin)
                 .allowedMethods("GET", "POST", "DELETE")
                 .allowedHeaders("*")
+                .allowCredentials(true)
                 .maxAge(3600);
             }
         };

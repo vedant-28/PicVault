@@ -25,7 +25,7 @@ picvault:
     max-files-per-request: 20
     max-file-size-mb: 50
   cors:
-    allowed-origin: ${FRONTEND_ORIGIN:http://localhost:3000}
+    allowed-origin: http://localhost:3000
 
 server:
   port: 8080
