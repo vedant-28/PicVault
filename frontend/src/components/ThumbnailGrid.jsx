@@ -3,10 +3,13 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 export default function ThumbnailGrid({ images, onSelect, onDelete }) {
   return (
     <div className="thumbnail-grid">
-      {images.map((image) => (
+      {images.map((image) => {
+        const imgSrc = image.url && image.url.startsWith('http') ? image.url : `${API_BASE}${image.url}`
+
+        return (
         <div key={image.id} className="thumbnail">
           <img
-            src={`${API_BASE}${image.url}`}
+            src={imgSrc}
             alt={image.filename}
             loading="lazy"
             onClick={() => onSelect(image)}
@@ -23,7 +26,7 @@ export default function ThumbnailGrid({ images, onSelect, onDelete }) {
             Delete
           </button>
         </div>
-      ))}
+      )})}
     </div>
   );
 }
