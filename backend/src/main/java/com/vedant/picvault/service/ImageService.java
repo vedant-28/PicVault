@@ -65,9 +65,9 @@ public class ImageService {
     @Transactional
     public List<ImageMetadata> uploadImage(MultipartFile[] files) {
 
-        long totalArraySizeBytes = Arrays.stream(files).mapToLong(MultipartFile::getSize).sum();
-        long maxAllowedMegaBytes = 50 * 1024 * 1024; // Total array size 
-        if(files.length > 20 || totalArraySizeBytes > maxAllowedMegaBytes) {
+        boolean totalSizeOfFiles = Arrays.stream(files).anyMatch(file -> file.getSize() > 50 * 1024 * 1024);
+        //long maxAllowedMegaBytes = 50 * 1024 * 1024; // Total array size 
+        if(files.length > 20 || totalSizeOfFiles) {
             throw new IllegalArgumentException("File upload limit reached. Please upload 20 or less files of total size 50MB");
         }
         
