@@ -79,13 +79,13 @@ public class ImageController {
     @DeleteMapping("/images/{id}")
     public ResponseEntity<String> deleteImageFile(@PathVariable("id") UUID id) {
         imageService.deleteImage(id);
-        return ResponseEntity.status(HttpStatus.NO_CONTENT).body("Image deleted successfully.");
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
 
     @DeleteMapping("/images")
     public ResponseEntity<String> deleteAllImage() {
         imageService.deleteAllImage();
-        return ResponseEntity.status(HttpStatus.NO_CONTENT).body("All images deleted successfully.");
+        return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
     }
 
 }
