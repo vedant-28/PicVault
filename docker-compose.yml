@@ -4,9 +4,17 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_ALLOW_EMPTY_PASSWORD: false
-      MYSQL_RNADOM_ROOT_PASSWORD: root
+      MYSQL_DATABASE: picvault
     ports:
       - 3306:3306
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   minio:
     image: minio/minio:latest
@@ -39,12 +47,37 @@ services:
       mc mb --ignore-existing local/picvault-images &&
       echo 'Bucket ready: picvault-images (private — no listing, no anonymous access)'
       "
+  backend:
+    build: ./backend
+    container_name: picvault_backend
+    ports:
+      - 8080:8080
+    depends_on:
+      mysql-db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql-db:3306/picvault?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      PICVAULT_MINIO_URL: http://minio:9000
+      PICVAULT_MINIO_ACCESS_KEY: root
+      PICVAULT_MINIO_SECRET_KEY: passw0rd1234
+      PICVAULT_MINIO_BUCKET: picvault-images
+      PICVAULT_CORS_ALLOWED_ORIGIN: http://localhost:3000
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_BASE_API_URL: http://localhost:8080
+    container_name: picvault_frontend
+    ports:
+      - 3000:80
+    depends_on:
+      - backend
+
 volumes:
   minio-data:
-
-# backend:
-#   environment:
-#     MINIO_URL: http://minio:9000
-#     MINIO_ACCESS_KEY: root
-#     MINIO_SECRET_KEY: passw0rd1234
-#     MINIO_BUCKET: picvault-images
+  mysql-data:
